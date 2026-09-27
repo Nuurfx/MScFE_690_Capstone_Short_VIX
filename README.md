@@ -1,6 +1,6 @@
 # MSCFE 690 Capstone Project: Volatility & Risk
 
-**Authors:** Edgar Nava & Celestin Nyandwi  
+**Authors:** Edgar Nava & Celestin NYANDWI 
 **Institution:** WorldQuant University — Master of Science in Financial Engineering (MScFE)  
 **Project Status:** Active / Capstone Phase  
 
