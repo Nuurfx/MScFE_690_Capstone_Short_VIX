@@ -1,0 +1,202 @@
+mkdir -p src output data
+touch src/markov_model.py"""
+===============================================================================
+MSCFE 690 Capstone — Step 2: Markov State & Transition Engine
+Filename: src/markov_model.py
+
+Purpose:
+  1. Load VIX, VVIX, and SVXY datasets with dual-path fallback (root or data/).
+  2. Discretize VIX price action into 4 standard market volatility regimes.
+  3. Calculate empirical state distributions and expected residence times E[T_i].
+  4. Compute multi-horizon empirical transition probability matrices P^(k).
+  5. Analyze cross-asset forward returns for SVXY across VIX states.
+===============================================================================
+"""
+
+from pathlib import Path
+import warnings
+import numpy as np
+import pandas as pd
+
+warnings.filterwarnings("ignore")
+
+# =============================================================================
+# 1. ROBUST DUAL-PATH DATA LOADER
+# =============================================================================
+OUTPUT_DIR = Path.cwd() / "output"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def load_dataset(filename: str) -> pd.DataFrame:
+    """Safely loads CSV datasets by checking both root and 'data/' directories."""
+    search_paths = [Path(filename), Path("data") / filename, Path("../") / filename]
+
+    for path in search_paths:
+        if path.exists():
+            print(f"[+] Successfully loaded {filename} from: {path}")
+            df = pd.read_csv(path)
+            df["Date"] = pd.to_datetime(df["Date"])
+            return df
+
+    raise FileNotFoundError(
+        f"Could not locate '{filename}' in root directory or 'data/' folder. "
+        f"Please verify file placement."
+    )
+
+
+# =============================================================================
+# 2. MARKOV REGIME DISCRETIZATION & PROBABILITY ENGINE
+# =============================================================================
+def assign_vix_regimes(
+    df: pd.DataFrame, price_col: str = "Close"
+) -> pd.DataFrame:
+    """Categorizes VIX levels into four discrete economic regimes:
+
+    State 0: Low Volatility (VIX < 15)
+    State 1: Normal Volatility (15 <= VIX < 20)
+    State 2: Elevated Volatility (20 <= VIX < 30)
+    State 3: Crisis / Spike (VIX >= 30)
+    """
+    bins = [0, 15, 20, 30, np.inf]
+    labels = [0, 1, 2, 3]
+    df["VIX_State"] = pd.cut(
+        df[price_col], bins=bins, labels=labels, right=False
+    ).astype(int)
+    return df
+
+
+def compute_transition_matrix(
+    df: pd.DataFrame, horizon: int = 1
+) -> pd.DataFrame:
+    """Computes empirical k-step transition probability matrix P^(k).
+
+    P_ij^(k) = P(S_{t+k} = j | S_t = i)
+    """
+    curr = df["VIX_State"].values[:-horizon]
+    fut = df["VIX_State"].values[horizon:]
+
+    counts = np.zeros((4, 4))
+    for c, f in zip(curr, fut):
+        counts[c, f] += 1
+
+    row_sums = counts.sum(axis=1, keepdims=True)
+    probs = np.divide(
+        counts, row_sums, out=np.zeros_like(counts), where=row_sums != 0
+    )
+
+    state_labels = [
+        "State 0 (<15)",
+        "State 1 [15-20)",
+        "State 2 [20-30)",
+        "State 3 (>=30)",
+    ]
+    return pd.DataFrame(probs, index=state_labels, columns=state_labels)
+
+
+def calculate_residence_times(p1_matrix: pd.DataFrame) -> pd.Series:
+    """Computes expected residence time in each state: E[T_i] = 1 / (1 - P_ii^(1))."""
+    p_ii = np.diag(p1_matrix.values)
+    residence_days = 1.0 / (1.0 - p_ii)
+    return pd.Series(
+        residence_days, index=p1_matrix.index, name="Expected_Residence_Days"
+    )
+
+
+# =============================================================================
+# 3. MAIN EXECUTION PIPELINE
+# =============================================================================
+def main():
+    print("==========================================================")
+    print("  MARKOV STATE & TRANSITION ENGINE (STEP 2)               ")
+    print("==========================================================\n")
+
+    # Load Datasets
+    df_vix = load_dataset("VIX_data.csv")
+    df_vvix = load_dataset("VVIX_data.csv")
+    df_svxy = load_dataset("SVXY_data.csv")
+
+    # Discretize Regimes
+    df_vix = assign_vix_regimes(df_vix)
+
+    # 1. Empirical State Distribution
+    total_days = len(df_vix)
+    counts = df_vix["VIX_State"].value_counts().sort_index()
+
+    descriptions = [
+        "State 0: Low Volatility (VIX < 15)",
+        "State 1: Normal Volatility (15 <= VIX < 20)",
+        "State 2: Elevated Volatility (20 <= VIX < 30)",
+        "State 3: Crisis Spike (VIX >= 30)",
+    ]
+
+    print("\n----------------------------------------------------------")
+    print(" 1. EMPIRICAL VIX REGIME DISTRIBUTION")
+    print("----------------------------------------------------------")
+    summary_list = []
+    for st, cnt in counts.items():
+        pct = (cnt / total_days) * 100
+        print(f" {descriptions[st]:<42} | {cnt:>5,} days ({pct:>5.2f}%)")
+        summary_list.append(
+            {
+                "State": st,
+                "Description": descriptions[st],
+                "Days": cnt,
+                "Probability_Pct": pct,
+            }
+        )
+    pd.DataFrame(summary_list).to_csv(
+        OUTPUT_DIR / "regime_distribution.csv", index=False
+    )
+
+    # 2. 1-Day Transition Matrix & Residence Times
+    p1 = compute_transition_matrix(df_vix, horizon=1)
+    residence = calculate_residence_times(p1)
+
+    print("\n----------------------------------------------------------")
+    print(" 2. EXPECTED REGIME RESIDENCE TIMES E[T_i]")
+    print("----------------------------------------------------------")
+    for name, days in residence.items():
+        print(f" {name:<20} -> Duration: {days:>5.2f} trading days")
+
+    # 3. Multi-Horizon Transition Matrices
+    horizons = [1, 5, 10, 15]
+    print("\n----------------------------------------------------------")
+    print(" 3. MULTI-HORIZON TRANSITION MATRICES P^(k)")
+    print("----------------------------------------------------------")
+    for h in horizons:
+        tm = compute_transition_matrix(df_vix, horizon=h)
+        formatted = (tm * 100).round(2).astype(str) + "%"
+        print(f"\n--- Transition Matrix P^({h}) ---")
+        print(formatted)
+        tm.to_csv(OUTPUT_DIR / f"transition_matrix_P{h}.csv")
+
+    # 4. Cross-Asset Performance (SVXY)
+    merged = df_vix[["Date", "VIX_State"]].merge(
+        df_svxy[["Date", "Close"]], on="Date", how="inner"
+    )
+    merged["SVXY_1D"] = merged["Close"].pct_change()
+    merged["SVXY_5D_Fwd"] = merged["Close"].pct_change(5).shift(-5)
+
+    svxy_stats = (
+        merged.groupby("VIX_State")
+        .agg(
+            Count=("SVXY_1D", "count"),
+            Mean_1D_Ret_Pct=("SVXY_1D", lambda x: x.mean() * 100),
+            Mean_5D_Fwd_Ret_Pct=("SVXY_5D_Fwd", lambda x: x.mean() * 100),
+        )
+        .round(3)
+    )
+
+    print("\n----------------------------------------------------------")
+    print(" 4. SVXY CONDITIONAL RETURNS BY VIX REGIME")
+    print("----------------------------------------------------------")
+    print(svxy_stats.to_string())
+    svxy_stats.to_csv(OUTPUT_DIR / "svxy_regime_performance.csv")
+
+    print("\n==========================================================")
+    print(f" [✓] Step 2 Complete. Results saved in: {OUTPUT_DIR}")
+    print("==========================================================")
+
+
+if __name__ == "__main__":
+    main()
