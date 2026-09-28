@@ -7,11 +7,11 @@
 ---
 
 ## 🚀 Project Overview
-This repository contains the Python code and data for our Capstone, **Short-VIX Exposure: An ETF-Based Trading System**. We study short-volatility exposure through ETFs and whether trading signals based on the Chicago Board Options Exchange (CBOE) Volatility Index ($\text{VIX}$), Volatility of Volatility Index ($\text{VVIX}$), and VIX Futures ETF ($\text{SVXY}$) can improve its results.
+This repository contains the Python code and data for our Capstone, **Short-VIX Exposure: An ETF-Based Trading System**. We study short-volatility exposure through ETF ($\text{SVXY}$) and whether trading signals based on the Chicago Board Options Exchange (CBOE) Volatility Index ($\text{VIX}$), Volatility of Volatility Index ($\text{VVIX}$), and VIX Futures ($\text{F1 and F2}$)  can improve its results.
 
 We begin by studying VIX statistics and volatility episodes to determine the VIX state boundaries. Then, we estimate separate transition matrices for 5-, 10-, and 15-trading-day horizons. Our intention is to identify possible “windows of opportunity” and test whether they help improve the performance of the trading signals.
 
-We divide the data into development, validation, and test sets. We develop the trading signals using development data and refine them using validation data. We use the combined development and validation data to determine the final states and transition matrices. These remain fixed during testing. On the unseen test data, we compare the results of the signals with and without the opportunity windows.
+We divide the data into development, validation, and test sets. We develop the trading signals using development data and refine them using validation data. We use the combined development and validation data to determine the final states and transition matrices. On the unseen test data, we compare the results of the signals with and without the opportunity windows.
 
 The analysis includes SVXY data and a synthetic SVXY −1× series. We compare the trading strategy with continuous exposure to the same synthetic series and the S&P 500 total-return benchmark. We include trading costs and evaluate net returns, Sharpe ratios, maximum drawdowns, and other risk measures.
 
